@@ -1,6 +1,10 @@
 import xml.etree.ElementTree as et
+from tokenize import String
+import subprocess
 import unicodecsv as csv
 from pathlib import Path
+import requests
+import pandas as pd
 
 
 def make_csv_from_ART(ART_corpus_dir_path, csv_file_path):
@@ -17,3 +21,30 @@ def make_csv_from_ART(ART_corpus_dir_path, csv_file_path):
                     typ = annot.attrib['type']
                     sen = "".join(annot.itertext()) # Captures all sub-tags
                     csv_writer.writerow([name, typ, sen])
+
+
+def get_tsv_url_from_spike_query(query: String = '\\\"boolean\\\": \\\"coronavirus\\\"'):
+    """
+    :param query: of the form
+        '\\\"token\\\": \\\"virus\\\", \\\"boolean\\\": \\\"coronavirus\\\"'
+    """
+
+    request = f'curl -v -X POST "http://35.246.128.202:5000/api/3/search/query" ' \
+              f'-H "accept: application/json" -H "Content-Type: application/json" ' \
+              f'-d "{{ \\\"queries\\\": {{ {query} }},' \
+              f' \\\"data_set_name\\\": \\\"covid19\\\"}}"'
+    stream = subprocess.Popen(request, shell=True, stderr=subprocess.PIPE)
+    out = stream.stderr
+    tsv_path = str(out.readlines()[20])
+    assert tsv_path[4:16] == 'TSV-Location'
+    tsv_path = 'http://35.246.128.202:5000' + tsv_path[18:-7]
+    return tsv_path
+
+
+def get_csv_from_tsv_url(url, file_path = './downloaded_query.csv'):
+    r = requests.get(url)
+    with open(file_path, 'wb') as f:
+        f.write(r.content)
+    csv_table = pd.read_table(file_path, sep='\t')
+    csv_table.to_csv(file_path, index=False)
+
